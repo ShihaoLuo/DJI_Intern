@@ -21,7 +21,8 @@ response = multiprocessing.Queue()
 pose = multiprocessing.Queue()
 color_flag = multiprocessing.Value('i', 9)
 marker1_wpoints = np.array([[100, -100, 0], [-100, -100, 0], [-100, 100, 0], [100, 100, 0]], dtype=np.float64)
-dataset = {"marker1":marker1_wpoints}
+marker2_wpoints = np.array([[100, -2100, 0], [-100, -2100, 0], [-100, -1900, 0], [100, -1900, 0]], dtype=np.float64)
+dataset = {"marker1":marker1_wpoints, "marker2":marker2_wpoints}
 
 
 def show_pic(_queue):
@@ -129,7 +130,7 @@ def _marker_detecter(_queue, dataset, _pose):
                 while _pose.empty() is False:
                     _pose.get()
                 _pose.put(np.append(tmp, yaw))
-                # print(np.append(tmp, yaw))
+                print(np.append(tmp, yaw))
 
 def cnt_area(cnt):
     area = cv.contourArea(cnt)
@@ -145,7 +146,7 @@ def _color_detect(_queue, _color_flag):
                   [77, 255, 255],
                   [124, 255, 255]])
     while True:
-        area = 20000
+        area = 8000
         color = None
         time.sleep(1)
         if _queue.empty() is False:
@@ -154,8 +155,6 @@ def _color_detect(_queue, _color_flag):
             hsv = cv.cvtColor(img, cv.COLOR_BGR2HSV)
             for idx, i in enumerate(zip(upperrange, lowerrange)):
                 mask = cv.inRange(hsv, i[1], i[0])
-                cv.imshow('contours', mask)
-                cv.waitKey(50)
                 im, contours, hierarchy = cv.findContours(mask, 1, 2)
                 contours.sort(key=cnt_area, reverse=True)
                 try:
@@ -167,6 +166,15 @@ def _color_detect(_queue, _color_flag):
                     print(e)
             if color is not None:
                 _color_flag.value = color
+                print('get color:', color)
+                if color == 0 :
+                    send("EXT led 255 0 0")
+                elif color == 1 :
+                    send("EXT led 255 255 0")
+                elif color == 2:
+                    send("EXT led 0 255 0")
+                elif color == 3 :
+                    send("EXT led 0 0 255")
             else:
                 _color_flag.value = 9
 
@@ -184,6 +192,7 @@ def line_track(_queue):
     YAW_FEEDBACK = -0.7
     FORWARD_SPEED = 15
     THROTTLE = 0
+    flag = 0
     while True:
         t = time.time()
         while _queue.empty() is True:
@@ -191,6 +200,9 @@ def line_track(_queue):
         img = _queue.get()
         _queue.put(img)
         ret, binaryimg = imgbinary.get_line_pos(img)
+        print(ret)
+        cv.imshow("line", binaryimg)
+        cv.waitKey(10)
         if ret[0][0] == 0:
             yaw_out = 0
         else:
@@ -201,6 +213,8 @@ def line_track(_queue):
 
         # 判断前面和中间都没线后， rc 0 0 0 0， 下降
         if ret[0][0] == 0 and ret[2][0] == 0:
+            flag += 1
+        if ret[0][0] == 0 and ret[2][0] == 0 and flag == 3:
             send('rc 0 0 0 0')
             time.sleep(0.5)
             send('land')
@@ -226,6 +240,8 @@ show_thread = multiprocessing.Process(target=show_pic, args=(queue,), daemon=Tru
 show_thread.start()
 
 def run():
+    while response.empty() is False:
+        response.get()
     while True:
         send('command')
         time.sleep(0.5)
@@ -234,25 +250,74 @@ def run():
             if t.upper() == 'OK':
                 print("connected!")
                 break
+    # send("motoron")
+    # time.sleep(1)
+    send('takeoff')
+    time.sleep(1)
     while True:
-        # send('battery?')
-        # time.sleep(0.1)
-        # send('EXT DIY hold')
-        # time.sleep(0.1)
-        # send('EXT led 0 0 255')
-        # time.sleep(5)
-        # send('EXT DIY throw')
-        # time.sleep(0.1)
-        # send('EXT DIY 255 0 0')
-        # time.sleep(1)
-        # send('EXT DIY 0 0 255')
-        time.sleep(1)
-        if pose.empty() is False:
+        time.sleep(0.5)
+        if response.empty() is False:
+            t = response.get()
+            if t.upper() == 'OK':
+                break
+    send("EXT led 0 0 0")
+    time.sleep(0.5)
+    send("up 20")
+    time.sleep(3)
+    # while True:
+    #     time.sleep(0.5)
+    #     if response.empty() is False:
+    #         t = response.get()
+    #         if t.upper() == 'OK':
+    #             break
+    # while True:
+    #     time.sleep(0.5)
+    #     if response.empty() is False:
+    #         t = response.get()
+    #         if t.upper() == 'OK':
+    #             break
+    if pose.empty() is False:
+        for i in range(3):
             tmp = pose.get()
             print(tmp)
-        if color_flag.value != 9:
-            t = color_flag.value
-            print('get color:', t)
+            yaw = 0 - tmp[3]
+            send("ccw " + str(yaw))
+            time.sleep(2)
+            send("forward "+str(-tmp[0]/10))
+            time.sleep(2)
+            send("right " + str(tmp[1]/10))
+            time.sleep(2)
+    for i in range(4):
+        send("forward 50")
+        time.sleep(3)
+        # while True:
+        #     if response.empty() is False:
+        #         t = response.get()
+        #         if t.upper() == 'OK':
+        #             break
+        # if pose.empty() is False:
+        #     tmp = pose.get()
+        #     print(tmp)
+        # print(color_flag.value)
+        # if color_flag.value != 9:
+        #     t = color_flag.value
+        #     if t == 0:
+        #         send("EXT led 255 0 0")
+        #     elif t == 1:
+        #         send("EXT led 255 255 0")
+        #     elif t == 2:
+        #         send("EXT led 0 255 0")
+        #     elif t == 3:
+        #         send("EXT led 0 0 255")
+    send("forward 50")
+    time.sleep(3)
+    while True:
+        if response.empty() is False:
+            t = response.get()
+            if t.upper() == 'OK':
+                break
+    send("down 20")
+    line_track(queue)
 
 if __name__=='__main__':
     run()

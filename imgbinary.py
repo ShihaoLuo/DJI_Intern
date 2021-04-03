@@ -5,9 +5,8 @@ import time
 
 def get_line_pos(img):
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    ret, img_binary = cv2.threshold(img_gray, 200, 255, cv2.THRESH_BINARY)
+    ret, img_binary = cv2.threshold(img_gray, 160, 255, cv2.THRESH_BINARY)
     img_binary = cv2.erode(img_binary, None, iterations=1)
-
     color = []
     color.append(img_binary[:,60])
     color.append(img_binary[:,100])
